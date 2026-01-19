@@ -8,7 +8,16 @@ from app.models.collection import (
 )
 from app.models.delinquency import DelinquencySnapshot
 from app.models.document import Document
+from app.models.ecl import (
+    ECLConfiguration,
+    ECLMovement,
+    ECLPortfolioSummary,
+    ECLProvision,
+    ECLStaging,
+    ECLUpload,
+)
 from app.models.fee import FeeCharge, FeeType, ProductFee
+from app.models.fldg import FLDGArrangement, FLDGRecovery, FLDGUtilization
 from app.models.holiday_calendar import Holiday, HolidayCalendar
 from app.models.interest_accrual import InterestAccrual
 from app.models.kyc import CreditBureauReport, KYCRequirement, KYCVerification
@@ -36,6 +45,13 @@ from app.models.securitization import (
     PoolLoan,
     SecuritizationPool,
 )
+from app.models.servicer_income import (
+    ExcessSpreadTracking,
+    ServicerArrangement,
+    ServicerIncomeAccrual,
+    ServicerIncomeDistribution,
+    WithholdingTracker,
+)
 from app.models.supply_chain import Counterparty, CreditLimit, Invoice
 from app.models.user import RolePermission, User
 from app.models.workflow import (
@@ -58,9 +74,19 @@ __all__ = [
     "DecisionRule",
     "DelinquencySnapshot",
     "Document",
+    "ECLConfiguration",
+    "ECLMovement",
+    "ECLPortfolioSummary",
+    "ECLProvision",
+    "ECLStaging",
+    "ECLUpload",
     "EscalationRule",
+    "ExcessSpreadTracking",
     "FeeCharge",
     "FeeType",
+    "FLDGArrangement",
+    "FLDGRecovery",
+    "FLDGUtilization",
     "Holiday",
     "HolidayCalendar",
     "InterestAccrual",
@@ -91,7 +117,11 @@ __all__ = [
     "RuleSet",
     "ScheduleConfiguration",
     "SecuritizationPool",
+    "ServicerArrangement",
+    "ServicerIncomeAccrual",
+    "ServicerIncomeDistribution",
     "User",
+    "WithholdingTracker",
     "WorkflowDefinition",
     "WorkflowInstance",
     "WorkflowTask",

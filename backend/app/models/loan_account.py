@@ -1,4 +1,4 @@
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -63,6 +63,43 @@ class LoanAccount(Base):
     maturity_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
     last_restructure_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
     restructure_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Write-off flags (critical for all reporting)
+    is_written_off: Mapped[bool] = mapped_column(Boolean, default=False)
+    write_off_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    write_off_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    write_off_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # NPA flags
+    is_npa: Mapped[bool] = mapped_column(Boolean, default=False)
+    npa_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    npa_category: Mapped[str | None] = mapped_column(String(30), nullable=True)  # substandard, doubtful, loss
+
+    # Restructure flags
+    is_restructured: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Fraud flag
+    is_fraud: Mapped[bool] = mapped_column(Boolean, default=False)
+    fraud_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+
+    # ECL staging (IFRS 9 / Ind AS 109)
+    ecl_stage: Mapped[int] = mapped_column(Integer, default=1)  # 1, 2, or 3
+    ecl_stage_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+    ecl_provision: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    ecl_provision_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+
+    # SICR (Significant Increase in Credit Risk) flag
+    sicr_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    sicr_date: Mapped[Date | None] = mapped_column(Date, nullable=True)
+
+    # Recovery tracking post write-off
+    recovered_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    recovery_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    # Co-lending / Partnership flags
+    is_co_lent: Mapped[bool] = mapped_column(Boolean, default=False)
+    co_lending_ratio: Mapped[str | None] = mapped_column(String(20), nullable=True)  # e.g., "80:20"
+    has_fldg_coverage: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
     application = relationship("LoanApplication")
