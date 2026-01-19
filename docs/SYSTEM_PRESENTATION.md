@@ -352,7 +352,69 @@ Case Opened → Assigned → Actions → PTP → Resolved/Escalated
 
 ---
 
-# Slide 15: Data Model Overview
+# Slide 15: Selldown Module
+
+## Loan & Investment Transfers
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SELLDOWN TRANSACTION                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌────────────┐        SALE         ┌────────────┐             │
+│   │   SELLER   │ ─────────────────►  │   BUYER    │             │
+│   │            │                      │            │             │
+│   │ • Bank     │   ₹10 Cr @ 98%      │ • AIF      │             │
+│   │ • NBFC     │   Gain/Loss: -₹20L  │ • Bank     │             │
+│   │ • Originator│                     │ • NBFC     │             │
+│   └────────────┘                      └────────────┘             │
+│                                                                  │
+│   Asset Types: Loans | NCDs | CPs | Bonds                       │
+│   Sale Types: Full (100%) | Partial (e.g., 60%)                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Features:
+- Full & partial selldown support
+- Mid-tenure sales
+- Gain/loss calculation
+- Post-sale servicing arrangements
+- Collection splitting
+
+---
+
+# Slide 16: Investment Module
+
+## Fixed Income Instruments (NCDs, CPs, Bonds)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              INVESTMENT PORTFOLIO                                │
+├──────────────┬───────┬────────────┬─────────┬──────────────────┤
+│ Type         │ Count │ Face Value │ YTM     │ Maturity Profile │
+├──────────────┼───────┼────────────┼─────────┼──────────────────┤
+│ NCDs         │ 25    │ ₹50 Cr     │ 9.25%   │ 1-5 years        │
+│ Commercial   │ 10    │ ₹20 Cr     │ 7.50%   │ 3-12 months      │
+│ Papers       │       │            │         │                  │
+│ G-Secs       │ 5     │ ₹30 Cr     │ 7.10%   │ 5-10 years       │
+│ Bonds        │ 8     │ ₹15 Cr     │ 8.75%   │ 2-7 years        │
+├──────────────┼───────┼────────────┼─────────┼──────────────────┤
+│ TOTAL        │ 48    │ ₹115 Cr    │ 8.15%   │ Avg: 3.2 yrs     │
+└──────────────┴───────┴────────────┴─────────┴──────────────────┘
+```
+
+### Features:
+- Multiple instrument types (NCD, CP, Bond, G-Sec, T-Bill)
+- Coupon types: Fixed, Floating, Zero Coupon, Step-Up/Down
+- Interest accrual & premium/discount amortization
+- YTM & duration calculations
+- Mark-to-market valuation
+- Coupon schedule generation
+
+---
+
+# Slide 17: Data Model Overview
 
 ## 50+ Database Models
 
@@ -374,10 +436,12 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 - **Lifecycle**: LoanRestructure, Prepayment, WriteOff
 - **SCF**: Counterparty, Invoice, CreditLimit
 - **Securitization**: SecuritizationPool, Investor, PoolInvestment
+- **Selldown**: SelldownBuyer, SelldownTransaction, SelldownSettlement
+- **Investments**: Investment, InvestmentProduct, InvestmentIssuer, InvestmentCouponSchedule
 
 ---
 
-# Slide 16: API Endpoints
+# Slide 18: API Endpoints
 
 ## RESTful API Design
 
@@ -389,6 +453,8 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | Accounts | `/loan-accounts` | CRUD + Schedule + Payments |
 | Lifecycle | `/loan-lifecycle` | Restructure, Prepay, Close |
 | Partners | `/loan-partners` | CRUD + Settlements |
+| Selldown | `/selldown-transactions` | Create, Approve, Settle |
+| Investments | `/investments` | CRUD + Accrue + MTM |
 | Calendars | `/holiday-calendars` | CRUD |
 | Benchmarks | `/benchmark-rates` | CRUD + History |
 
@@ -399,7 +465,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 
 ---
 
-# Slide 17: Test Coverage
+# Slide 19: Test Coverage
 
 ## Comprehensive Testing
 
@@ -423,7 +489,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 
 ---
 
-# Slide 18: Deployment Options
+# Slide 20: Deployment Options
 
 ## Flexible Deployment
 
@@ -451,7 +517,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-# Slide 19: Security Features
+# Slide 21: Security Features
 
 ## Enterprise-Grade Security
 
@@ -473,7 +539,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-# Slide 20: Key Differentiators
+# Slide 22: Key Differentiators
 
 ## What Sets Us Apart
 
@@ -490,7 +556,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-# Slide 21: Use Cases
+# Slide 23: Use Cases
 
 ## Who Can Use This System?
 
@@ -516,7 +582,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-# Slide 22: Future Roadmap
+# Slide 24: Future Roadmap
 
 ## Planned Enhancements
 
@@ -540,7 +606,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-# Slide 23: Getting Started
+# Slide 25: Getting Started
 
 ## Quick Start Guide
 
@@ -571,7 +637,7 @@ uvicorn app.main:app --reload
 
 ---
 
-# Slide 24: Project Statistics
+# Slide 26: Project Statistics
 
 ## By The Numbers
 
@@ -588,7 +654,7 @@ uvicorn app.main:app --reload
 
 ---
 
-# Slide 25: Summary
+# Slide 27: Summary
 
 ## Complete Lending Platform
 
@@ -603,6 +669,8 @@ uvicorn app.main:app --reload
 ✅ **Underwriting**: Rules engine, workflows, KYC
 ✅ **SCF**: Invoice financing, credit limits
 ✅ **Securitization**: Pools, investors, cash flows
+✅ **Selldown**: Loan/investment transfers, gain/loss
+✅ **Investments**: NCDs, CPs, Bonds, YTM, MTM
 
 ### Production Ready
 - Comprehensive test coverage
@@ -612,7 +680,7 @@ uvicorn app.main:app --reload
 
 ---
 
-# Slide 26: Thank You
+# Slide 28: Thank You
 
 ## Questions?
 

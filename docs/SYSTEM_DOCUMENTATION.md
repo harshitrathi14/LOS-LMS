@@ -17,13 +17,15 @@
 5. [FLDG (First Loss Default Guarantee)](#5-fldg-first-loss-default-guarantee)
 6. [ECL Staging & Provisions](#6-ecl-staging--provisions)
 7. [Servicer Fees & Income](#7-servicer-fees--income)
-8. [Data Models](#8-data-models)
-9. [Business Logic & Services](#9-business-logic--services)
-10. [API Reference](#10-api-reference)
-11. [Financial Calculations](#11-financial-calculations)
-12. [Security & Compliance](#12-security--compliance)
-13. [Deployment Guide](#13-deployment-guide)
-14. [Testing Strategy](#14-testing-strategy)
+8. [Selldown Module](#8-selldown-module)
+9. [Investment Module (NCDs, CPs, Bonds)](#9-investment-module-ncds-cps-bonds)
+10. [Data Models](#10-data-models)
+11. [Business Logic & Services](#11-business-logic--services)
+12. [API Reference](#12-api-reference)
+13. [Financial Calculations](#13-financial-calculations)
+14. [Security & Compliance](#14-security--compliance)
+15. [Deployment Guide](#15-deployment-guide)
+16. [Testing Strategy](#16-testing-strategy)
 
 ---
 
@@ -521,9 +523,281 @@ Lender Income (Jan-2024):
 
 ---
 
-## 8. Data Models
+## 8. Selldown Module
 
-### 8.1 Model Categories
+### 8.1 Overview
+
+The Selldown module enables sale/transfer of loans or investments to third parties during their tenure, supporting both full and partial selldowns.
+
+### 8.2 Selldown Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| **Full Selldown** | 100% of position sold | Portfolio cleanup, regulatory compliance |
+| **Partial Selldown** | Portion of position sold | Risk distribution, capital release |
+| **Assignment** | Direct sale with transfer of ownership | Secondary market transactions |
+| **Participation Sale** | Sale of participation in existing loan | Co-lending exit |
+
+### 8.3 Selldown Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    Initiate     │────►│     Approve     │────►│     Settle      │
+│   Transaction   │     │   Transaction   │     │   Transaction   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+  - Identify asset        - Review terms         - Transfer funds
+  - Calculate price       - Verify buyer         - Update records
+  - Compute gain/loss     - Check limits         - Update exposure
+```
+
+### 8.4 Key Data Models
+
+```python
+class SelldownTransaction:
+    transaction_code: str
+    transaction_type: str          # full_selldown, partial_selldown
+    asset_type: str                # loan, investment
+    loan_account_id: int           # For loan selldowns
+    investment_id: int             # For investment selldowns
+    buyer_id: int
+
+    # Sale details
+    selldown_percent: Decimal      # 100 for full, <100 for partial
+    selldown_principal: Decimal
+    sale_price: Decimal
+    price_percent: Decimal         # % of book value
+
+    # Gain/Loss
+    book_value: Decimal
+    gain_loss: Decimal
+    gain_loss_percent: Decimal
+
+    # Yield analysis
+    original_yield: Decimal
+    sale_yield: Decimal
+    yield_spread: Decimal
+
+    # Post-sale servicing
+    servicing_retained: bool
+    servicer_fee_rate: Decimal
+
+    # Status
+    status: str                    # initiated, approved, settled
+```
+
+### 8.5 Pricing & Valuation
+
+```
+Sale Price Determination:
+┌────────────────────────────────────────┐
+│ Price % = Sale Price / Book Value × 100│
+├────────────────────────────────────────┤
+│ Premium: Price % > 100 (e.g., 102%)    │
+│ Par: Price % = 100                      │
+│ Discount: Price % < 100 (e.g., 98%)    │
+└────────────────────────────────────────┘
+
+Gain/Loss Calculation:
+  Gain/Loss = Sale Price - Book Value
+  Book Value = Outstanding Principal + Accrued Interest
+```
+
+### 8.6 Post-Selldown Servicing
+
+When servicing is retained:
+```
+Collection Received: ₹22,000
+           │
+           ▼
+┌─────────────────────────────────────────┐
+│ Step 1: Split by selldown percentage    │
+│   Buyer Share (80%): ₹17,600            │
+│   Seller Retained (20%): ₹4,400         │
+├─────────────────────────────────────────┤
+│ Step 2: Deduct servicer fee from buyer  │
+│   Servicer Fee: ₹50                     │
+│   GST on Fee: ₹9                        │
+├─────────────────────────────────────────┤
+│ Step 3: Net to buyer                    │
+│   Net Remittance: ₹17,541               │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 9. Investment Module (NCDs, CPs, Bonds)
+
+### 9.1 Overview
+
+The Investment module handles fixed income instruments including Non-Convertible Debentures (NCDs), Commercial Papers (CPs), Bonds, Government Securities, and other debt instruments.
+
+### 9.2 Supported Instrument Types
+
+| Type | Description | Typical Tenure |
+|------|-------------|----------------|
+| **NCD** | Non-Convertible Debentures | 1-10 years |
+| **CP** | Commercial Paper | 7 days - 1 year |
+| **Bond** | Corporate/PSU Bonds | 1-30 years |
+| **G-Sec** | Government Securities | 1-40 years |
+| **T-Bill** | Treasury Bills | 91/182/364 days |
+| **CD** | Certificate of Deposit | 7 days - 1 year |
+| **SDL** | State Development Loans | 1-15 years |
+
+### 9.3 Coupon Types
+
+| Type | Description |
+|------|-------------|
+| **Fixed** | Constant coupon rate throughout tenure |
+| **Floating** | Linked to benchmark (MIBOR, T-Bill, etc.) + spread |
+| **Zero Coupon** | No periodic coupon, issued at discount |
+| **Step-Up** | Coupon rate increases at predefined intervals |
+| **Step-Down** | Coupon rate decreases at predefined intervals |
+
+### 9.4 Investment Lifecycle
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│ Purchase │───►│  Accrue  │───►│ Receive  │───►│ Maturity │
+│          │    │ Interest │    │  Coupon  │    │  /Sale   │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+     │               │               │               │
+     ▼               ▼               ▼               ▼
+- Book at cost   - Daily accrual - Record receipt- Redeem/Sell
+- Generate       - Amortize      - TDS handling  - Gain/loss
+  schedule         premium/disc  - Reset accrual - Close position
+```
+
+### 9.5 Key Data Models
+
+```python
+class Investment:
+    investment_code: str
+    isin: str                      # ISIN code
+    security_name: str
+    instrument_type: str           # ncd, cp, bond, gsec
+
+    # Holdings
+    face_value_per_unit: Decimal
+    units_held: Decimal
+    total_face_value: Decimal
+
+    # Purchase details
+    purchase_date: date
+    purchase_price_per_unit: Decimal
+    purchase_yield: Decimal        # YTM at purchase
+    total_purchase_cost: Decimal
+
+    # Coupon
+    coupon_rate: Decimal
+    coupon_type: str               # fixed, floating, zero_coupon
+    coupon_frequency: str          # monthly, quarterly, semi_annual
+
+    # For floating rate
+    benchmark_rate_id: int
+    spread_over_benchmark: Decimal
+    current_effective_rate: Decimal
+
+    # Valuation
+    amortized_cost: Decimal
+    accrued_interest: Decimal
+    current_market_price: Decimal
+    current_ytm: Decimal
+
+    # Classification
+    classification: str            # HTM, AFS, HFT
+
+    # Maturity
+    maturity_date: date
+    remaining_tenure_days: int
+```
+
+### 9.6 Yield to Maturity (YTM) Calculation
+
+```
+        C × (1 - (1+r)^-n)     F
+Price = ─────────────────── + ─────
+              r               (1+r)^n
+
+Where:
+  C = Coupon payment per period
+  r = YTM per period
+  n = Number of periods
+  F = Face value
+
+Example (Semi-annual):
+  Face Value: ₹1,000
+  Coupon: 8% (₹40 semi-annual)
+  Price: ₹980
+  Tenure: 5 years (10 periods)
+  YTM ≈ 8.35%
+```
+
+### 9.7 Interest Accrual
+
+```
+Daily Accrual (ACT/365):
+  Interest = Face Value × Rate × Days / 365
+
+Premium/Discount Amortization:
+  Daily Amortization = (Purchase Price - Face Value) / Days to Maturity
+
+Net Interest Income:
+  = Accrued Interest - Premium Amortization (if premium)
+  = Accrued Interest + Discount Accretion (if discount)
+```
+
+### 9.8 Mark-to-Market (MTM)
+
+```
+MTM Process:
+┌─────────────────────────────────────────┐
+│ 1. Get market price (exchange/dealer)   │
+│ 2. Calculate market value               │
+│    Market Value = Units × Market Price  │
+│ 3. Compare to book value                │
+│    Book Value = Amortized Cost + Accrued│
+│ 4. Record MTM gain/loss                 │
+│    MTM = Market Value - Book Value      │
+└─────────────────────────────────────────┘
+
+Classification Impact:
+  HTM: No MTM impact on P&L
+  AFS: MTM through OCI (equity)
+  HFT: MTM through P&L
+```
+
+### 9.9 Portfolio Summary Example
+
+```
+Investment Portfolio as on 31-Jan-2024
+┌────────────┬───────┬────────────┬────────────┬─────────┬─────────┐
+│ Type       │ Count │ Face Value │ Book Value │ Mkt Val │ MTM G/L │
+├────────────┼───────┼────────────┼────────────┼─────────┼─────────┤
+│ NCDs       │ 25    │ ₹50 Cr     │ ₹51.2 Cr   │ ₹52 Cr  │ +₹0.8Cr │
+│ CPs        │ 10    │ ₹20 Cr     │ ₹19.5 Cr   │ ₹19.6Cr │ +₹0.1Cr │
+│ G-Secs     │ 5     │ ₹30 Cr     │ ₹31.5 Cr   │ ₹30.8Cr │ -₹0.7Cr │
+├────────────┼───────┼────────────┼────────────┼─────────┼─────────┤
+│ Total      │ 40    │ ₹100 Cr    │ ₹102.2 Cr  │ ₹102.4Cr│ +₹0.2Cr │
+└────────────┴───────┴────────────┴────────────┴─────────┴─────────┘
+
+Maturity Profile:
+  0-30 days:   ₹15 Cr (15%)
+  31-90 days:  ₹20 Cr (20%)
+  91-365 days: ₹35 Cr (35%)
+  1-3 years:   ₹20 Cr (20%)
+  3+ years:    ₹10 Cr (10%)
+
+Weighted Avg YTM: 8.25%
+Weighted Avg Duration: 2.3 years
+```
+
+---
+
+## 10. Data Models
+
+### 10.1 Model Categories
 
 | Category | Models |
 |----------|--------|
@@ -534,6 +808,8 @@ Lender Income (Jan-2024):
 | **FLDG** | FLDGArrangement, FLDGUtilization, FLDGRecovery |
 | **ECL** | ECLConfiguration, ECLStaging, ECLProvision, ECLMovement, ECLUpload |
 | **Servicer Income** | ServicerArrangement, ServicerIncomeAccrual, ExcessSpreadTracking, WithholdingTracker |
+| **Selldown** | SelldownBuyer, SelldownTransaction, SelldownSettlement, SelldownCollectionSplit |
+| **Investment** | Investment, InvestmentProduct, InvestmentIssuer, InvestmentCouponSchedule, InvestmentAccrual, InvestmentValuation |
 | **Collections** | CollectionCase, CollectionAction, PromiseToPay, DelinquencySnapshot |
 | **Lifecycle** | LoanRestructure, Prepayment, WriteOff, WriteOffRecovery |
 | **Workflow** | WorkflowDefinition, WorkflowInstance, WorkflowTask |
@@ -541,7 +817,7 @@ Lender Income (Jan-2024):
 | **SCF** | Counterparty, Invoice, CreditLimit |
 | **Securitization** | SecuritizationPool, PoolLoan, Investor, PoolInvestment |
 
-### 8.2 Entity Relationships
+### 10.2 Entity Relationships
 
 ```
 Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSchedule
@@ -560,9 +836,9 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 
 ---
 
-## 9. Business Logic & Services
+## 11. Business Logic & Services
 
-### 9.1 Core Services
+### 11.1 Core Services
 
 | Service | Purpose |
 |---------|---------|
@@ -573,7 +849,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `calendar.py` | Business day adjustments |
 | `fees.py` | Fee calculation and charging |
 
-### 9.2 Co-Lending Services
+### 11.2 Co-Lending Services
 
 | Service | Purpose |
 |---------|---------|
@@ -582,7 +858,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `fldg.py` | FLDG utilization and recovery |
 | `servicer_income.py` | Servicer fee and excess spread |
 
-### 9.3 Risk & Compliance Services
+### 11.3 Risk & Compliance Services
 
 | Service | Purpose |
 |---------|---------|
@@ -591,7 +867,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `collections.py` | Collection case management |
 | `escalation.py` | Escalation rule execution |
 
-### 9.4 Lifecycle Services
+### 11.4 Lifecycle Services
 
 | Service | Purpose |
 |---------|---------|
@@ -599,11 +875,36 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `prepayment.py` | Prepayment processing |
 | `closure.py` | Loan closure and write-off |
 
+### 11.5 Selldown Services
+
+| Service | Purpose |
+|---------|---------|
+| `selldown.py` | Loan/investment selldown processing |
+| - `initiate_loan_selldown()` | Create loan selldown transaction |
+| - `initiate_investment_selldown()` | Create investment selldown transaction |
+| - `approve_selldown()` | Approve selldown for settlement |
+| - `settle_selldown()` | Settle and transfer assets |
+| - `split_collection_for_selldown()` | Split collections post-selldown |
+
+### 11.6 Investment Services
+
+| Service | Purpose |
+|---------|---------|
+| `investment.py` | Fixed income investment management |
+| - `create_investment()` | Create new investment (NCD, CP, Bond) |
+| - `generate_coupon_schedule()` | Generate coupon payment schedule |
+| - `accrue_interest()` | Daily interest accrual |
+| - `receive_coupon()` | Record coupon receipt |
+| - `mature_investment()` | Process maturity/redemption |
+| - `mark_to_market()` | MTM valuation |
+| - `update_floating_rate()` | Reset floating rate |
+| - `calculate_ytm()` | Yield to maturity calculation |
+
 ---
 
-## 10. API Reference
+## 12. API Reference
 
-### 10.1 Core Endpoints
+### 12.1 Core Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -614,7 +915,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `/loan-accounts/{id}/schedule` | GET | Get repayment schedule |
 | `/loan-accounts/{id}/payments` | POST | Record payment |
 
-### 10.2 Co-Lending Endpoints
+### 12.2 Co-Lending Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -622,7 +923,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `/partner-settlements` | POST | Generate settlement |
 | `/partner-settlements/{id}/approve` | POST | Approve settlement |
 
-### 10.3 FLDG Endpoints
+### 12.3 FLDG Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -632,7 +933,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `/fldg-utilizations/{id}/approve` | POST | Approve utilization |
 | `/fldg-recoveries` | POST | Record recovery |
 
-### 10.4 ECL Endpoints
+### 12.4 ECL Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -642,7 +943,7 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `/ecl-uploads` | POST | Upload external ECL |
 | `/ecl-portfolio-summary` | GET | Portfolio summary |
 
-### 10.5 Lifecycle Endpoints
+### 12.5 Lifecycle Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -652,11 +953,39 @@ Borrower ──► LoanApplication ──► LoanAccount ──► RepaymentSche
 | `/loan-lifecycle/close` | POST | Close loan |
 | `/loan-lifecycle/write-off` | POST | Write-off loan |
 
+### 12.6 Selldown Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/selldown-buyers` | CRUD | Buyer management |
+| `/selldown-transactions` | POST | Create selldown |
+| `/selldown-transactions/{id}` | GET | Get transaction details |
+| `/selldown-transactions/{id}/approve` | POST | Approve selldown |
+| `/selldown-transactions/{id}/settle` | POST | Settle selldown |
+| `/selldown-transactions/{id}/cancel` | POST | Cancel selldown |
+| `/selldown-collection-splits` | POST | Record collection split |
+| `/selldown-portfolio-summary` | GET | Buyer portfolio summary |
+
+### 12.7 Investment Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/investment-issuers` | CRUD | Issuer management |
+| `/investment-products` | CRUD | Product configuration |
+| `/investments` | CRUD | Investment management |
+| `/investments/{id}/schedule` | GET | Get coupon schedule |
+| `/investments/{id}/accrue` | POST | Run interest accrual |
+| `/investments/{id}/coupon` | POST | Record coupon receipt |
+| `/investments/{id}/mature` | POST | Process maturity |
+| `/investments/{id}/mtm` | POST | Mark-to-market |
+| `/investments/{id}/selldown` | POST | Initiate selldown |
+| `/investment-portfolio-summary` | GET | Portfolio summary |
+
 ---
 
-## 11. Financial Calculations
+## 13. Financial Calculations
 
-### 11.1 EMI Formula
+### 13.1 EMI Formula
 
 ```
         P × r × (1+r)^n
@@ -669,7 +998,7 @@ Where:
   n = Tenure in Months
 ```
 
-### 11.2 Day-Count Conventions
+### 13.2 Day-Count Conventions
 
 | Convention | Year Basis | Day Calculation |
 |------------|------------|-----------------|
@@ -678,7 +1007,7 @@ Where:
 | ACT/ACT | Actual | Actual days, actual year |
 | ACT/360 | 360 days | Actual days |
 
-### 11.3 Interest Calculation
+### 13.3 Interest Calculation
 
 ```python
 def calculate_interest(principal, rate, start_date, end_date, convention):
@@ -688,21 +1017,21 @@ def calculate_interest(principal, rate, start_date, end_date, convention):
 
 ---
 
-## 12. Security & Compliance
+## 14. Security & Compliance
 
-### 12.1 Access Control
+### 14.1 Access Control
 
 - Role-based permissions (RBAC)
 - User authentication support
 - API key management
 
-### 12.2 Data Protection
+### 14.2 Data Protection
 
 - Input validation (Pydantic)
 - SQL injection prevention (ORM)
 - Sensitive data encryption
 
-### 12.3 Audit & Compliance
+### 14.3 Audit & Compliance
 
 - Complete audit trail
 - Rule execution logging
@@ -710,7 +1039,7 @@ def calculate_interest(principal, rate, start_date, end_date, convention):
 - ECL provision history
 - FLDG utilization records
 
-### 12.4 Regulatory Compliance
+### 14.4 Regulatory Compliance
 
 - IFRS 9 / Ind AS 109 ECL staging
 - RBI NPA classification
@@ -719,9 +1048,9 @@ def calculate_interest(principal, rate, start_date, end_date, convention):
 
 ---
 
-## 13. Deployment Guide
+## 15. Deployment Guide
 
-### 13.1 Development Setup
+### 15.1 Development Setup
 
 ```bash
 # Clone repository
@@ -748,7 +1077,7 @@ python -m app.db.init_db
 uvicorn app.main:app --reload
 ```
 
-### 13.2 Production Deployment
+### 15.2 Production Deployment
 
 ```bash
 # Docker deployment
@@ -761,7 +1090,7 @@ alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-### 13.3 API Access
+### 15.3 API Access
 
 - API: http://localhost:8000
 - Swagger UI: http://localhost:8000/docs
@@ -769,9 +1098,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
 ---
 
-## 14. Testing Strategy
+## 16. Testing Strategy
 
-### 14.1 Test Distribution
+### 16.1 Test Distribution
 
 | Category | Tests | Coverage |
 |----------|-------|----------|
@@ -790,7 +1119,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 | **Servicer Income** | 25 | Fees, excess spread |
 | **Total** | **386** | **All modules** |
 
-### 14.2 Running Tests
+### 16.2 Running Tests
 
 ```bash
 # All tests
@@ -815,6 +1144,150 @@ pytest --cov=app --cov-report=html
 | `FLDG_GUARANTEE.md` | First/Second Loss Default Guarantee |
 | `ECL_STAGING_PROVISIONS.md` | IFRS 9 Stage 1, 2, 3 provisioning |
 | `SERVICER_FEES_INCOME.md` | Fees, excess spread, withholding |
+
+---
+
+## Appendix B: Detailed Module Statistics
+
+> **Note:** Full statistics available in Excel format: `docs/LOS_LMS_Module_Statistics.xlsx`
+
+### B.1 Overall System Statistics
+
+| Metric | Value |
+|--------|-------|
+| **Total Python Files** | 96 |
+| **Total Lines of Code** | 18,460+ |
+| **Database Models** | 31 |
+| **Business Services** | 24 |
+| **API Routers** | 12 |
+| **Pydantic Schemas** | 13 |
+| **Test Files** | 8 |
+| **Test Cases** | 179+ |
+
+### B.2 Data Models Layer (3,677 lines | 31 files)
+
+| Model File | Lines | Description |
+|------------|-------|-------------|
+| `ecl.py` | 399 | ECL staging & provisioning (IFRS 9/Ind AS 109) |
+| `servicer_income.py` | 380 | Servicer fees, excess spread tracking |
+| `securitization.py` | 265 | Pool, investor, PTC/DA structures |
+| `fldg.py` | 244 | First Loss Default Guarantee arrangements |
+| `supply_chain.py` | 209 | Counterparty, invoice, credit limits |
+| `workflow.py` | 192 | Workflow definitions, stages, tasks |
+| `collection.py` | 175 | Collection cases, actions, PTP |
+| `kyc.py` | 160 | KYC verification, documents |
+| `fee.py` | 150 | Fee types, charges, waivers |
+| `partner_ledger.py` | 148 | Partner transactions, settlements |
+| `rules.py` | 142 | Rule sets, decision rules |
+| `write_off.py` | 116 | Write-off, recovery tracking |
+| `loan_account.py` | 108 | Core loan account entity |
+| `loan_participation.py` | 94 | Co-lending participations |
+| `user.py` | 77 | User authentication model |
+| `prepayment.py` | 72 | Prepayment records |
+| `loan_partner.py` | 72 | Partner configuration |
+| `restructure.py` | 70 | Loan restructuring records |
+| `benchmark_rate.py` | 69 | Floating rate benchmarks |
+| `holiday_calendar.py` | 65 | Business day calendars |
+| `schedule_config.py` | 64 | Schedule configuration |
+| `interest_accrual.py` | 57 | Interest accrual entries |
+| `delinquency.py` | 55 | Delinquency snapshots |
+| `repayment_schedule.py` | 27 | EMI schedule items |
+| `loan_application.py` | 27 | Loan applications |
+| `loan_product.py` | 26 | Product configuration |
+| `document.py` | 24 | Document attachments |
+| `payment_allocation.py` | 21 | Payment allocation records |
+| `payment.py` | 19 | Payment transactions |
+| `borrower.py` | 19 | Borrower entity |
+
+### B.3 Business Services Layer (9,823 lines | 24 files)
+
+| Service File | Lines | Key Functions |
+|--------------|-------|---------------|
+| `securitization.py` | 709 | Pool creation, cash flow distribution, investor reporting |
+| `ecl.py` | 606 | Stage classification, PD/LGD calculation, provision computation |
+| `closure.py` | 516 | Loan closure, settlement, foreclosure processing |
+| `workflow.py` | 514 | State machine, task assignment, SLA tracking |
+| `servicer_income.py` | 510 | Fee calculation, excess spread, income recognition |
+| `supply_chain.py` | 492 | Invoice financing, credit limit management |
+| `prepayment.py` | 451 | Partial/full prepayment, EMI/tenure reduction |
+| `fees.py` | 446 | Fee engine, late fees, processing fees |
+| `fldg.py` | 438 | FLDG utilization, claims, replenishment |
+| `kyc.py` | 435 | Verification workflows, document validation |
+| `rules_engine.py` | 426 | JSON rule evaluation, decision automation |
+| `advanced_schedule.py` | 424 | Step-up/down, balloon, custom schedules |
+| `restructure.py` | 404 | Rate/tenure modification, principal haircut |
+| `accrual.py` | 380 | Daily interest accrual, posting |
+| `co_lending.py` | 357 | Payment splitting, partner allocation |
+| `calendar.py` | 355 | Business day adjustment, holiday handling |
+| `schedule.py` | 345 | EMI/bullet/interest-only schedule generation |
+| `delinquency.py` | 338 | DPD calculation, bucket classification |
+| `floating_rate.py` | 320 | Benchmark tracking, rate resets |
+| `settlement.py` | 310 | Partner settlement generation |
+| `frequency.py` | 294 | Payment frequency calculations |
+| `lifecycle.py` | 291 | Loan lifecycle state management |
+| `interest.py` | 274 | Interest calculation engine |
+| `payments.py` | 188 | Payment processing, waterfall allocation |
+
+### B.4 API Layer (1,697 lines | 12 routers)
+
+| Router File | Lines | Endpoints |
+|-------------|-------|-----------|
+| `loan_lifecycle.py` | 546 | Restructure, prepay, close, write-off APIs |
+| `benchmark_rates.py` | 306 | Rate management, history tracking |
+| `holiday_calendars.py` | 304 | Calendar CRUD, holiday management |
+| `loan_accounts.py` | 185 | Account CRUD, schedule, payments |
+| `loan_applications.py` | 83 | Application workflow APIs |
+| `documents.py` | 71 | Document upload/download |
+| `loan_participations.py` | 56 | Co-lending participation APIs |
+| `loan_products.py` | 36 | Product configuration |
+| `loan_partners.py` | 36 | Partner management |
+| `borrowers.py` | 34 | Borrower CRUD |
+| `health.py` | 8 | Health check endpoint |
+
+### B.5 Test Suite (2,477 lines | 179+ test cases)
+
+| Test File | Lines | Tests | Coverage Area |
+|-----------|-------|-------|---------------|
+| `test_lifecycle.py` | 502 | 26 | Restructure, prepayment, closure |
+| `test_rules_engine.py` | 355 | 24 | All rule operators & logic |
+| `test_ecl.py` | 336 | 29 | Stage classification, provisions |
+| `test_servicer_income.py` | 292 | 25 | Fee calculations, income |
+| `test_securitization.py` | 275 | 20 | Pool management, distributions |
+| `test_workflow.py` | 263 | 18 | State transitions, tasks |
+| `test_fldg.py` | 248 | 21 | Guarantee utilization |
+| `test_supply_chain.py` | 206 | 16 | Invoice financing |
+
+### B.6 Functional Module Summary
+
+| Module | Models | Services | Lines | Description |
+|--------|--------|----------|-------|-------------|
+| **Core Lending** | 6 | 5 | 2,800+ | Accounts, schedules, payments, products |
+| **Co-Lending & Partnership** | 3 | 3 | 1,500+ | Participation, settlement, partner ledger |
+| **Collections** | 2 | 2 | 1,000+ | Delinquency tracking, case management |
+| **Lifecycle Management** | 3 | 4 | 1,800+ | Restructure, prepayment, closure, write-off |
+| **Underwriting** | 3 | 3 | 1,500+ | Rules engine, workflow, KYC verification |
+| **Risk & Compliance** | 2 | 2 | 1,400+ | ECL staging, FLDG management |
+| **Supply Chain Finance** | 1 | 1 | 700+ | Invoice financing, credit limits |
+| **Securitization** | 1 | 1 | 970+ | Pools, investors, cash flow distribution |
+| **Servicer Income** | 1 | 1 | 890+ | Fees, excess spread, income tracking |
+| **Configuration** | 5 | 4 | 1,500+ | Products, rates, calendars, fees |
+
+### B.7 Pydantic Schemas Layer (641 lines | 13 files)
+
+| Schema File | Lines | Purpose |
+|-------------|-------|---------|
+| `benchmark_rate.py` | 108 | Rate request/response models |
+| `holiday_calendar.py` | 90 | Calendar schemas |
+| `loan_account.py` | 67 | Account DTOs |
+| `interest_accrual.py` | 64 | Accrual schemas |
+| `loan_application.py` | 40 | Application schemas |
+| `loan_product.py` | 32 | Product schemas |
+| `payment.py` | 27 | Payment schemas |
+| `borrower.py` | 25 | Borrower schemas |
+| `repayment_schedule.py` | 25 | Schedule schemas |
+| `document.py` | 24 | Document schemas |
+| `loan_participation.py` | 23 | Participation schemas |
+| `loan_partner.py` | 21 | Partner schemas |
 
 ---
 

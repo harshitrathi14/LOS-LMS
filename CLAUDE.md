@@ -33,7 +33,10 @@ pytest tests/test_schedule.py::test_generate_emi_schedule
 
 ## Project Overview
 
-Unified Loan Origination and Loan Management System (LOS/LMS) - an integrated financial lending platform handling loans from application to repayment.
+Unified Loan Origination and Loan Management System (LOS/LMS) - an integrated financial lending and investment platform handling:
+- **Loans**: From application to repayment (retail, commercial, co-lending)
+- **Investments**: Fixed income instruments (NCDs, CPs, Bonds, G-Secs)
+- **Selldown**: Loan/investment transfers and sales (full/partial, mid-tenure)
 
 ## Architecture
 
@@ -69,6 +72,21 @@ tests/                       # pytest tests
 - `compute_dpd()`: Calculates Days Past Due from oldest unpaid installment
 - `_refresh_account_balances()`: Updates loan account outstanding amounts
 
+**`services/selldown.py`** - Loan/Investment selldown
+- `initiate_loan_selldown()`: Create loan selldown transaction
+- `initiate_investment_selldown()`: Create investment selldown transaction
+- `approve_selldown()` / `settle_selldown()`: Workflow processing
+- `split_collection_for_selldown()`: Post-sale collection splitting
+
+**`services/investment.py`** - Fixed income investment management
+- `create_investment()`: Create NCD, CP, Bond, G-Sec investments
+- `generate_coupon_schedule()`: Generate coupon payment schedule
+- `accrue_interest()`: Daily interest accrual with premium/discount amortization
+- `receive_coupon()`: Record coupon receipt
+- `mature_investment()`: Process maturity/redemption
+- `mark_to_market()`: MTM valuation
+- `calculate_ytm()`: Yield to maturity calculation
+
 ### Data Model
 
 Core entities in `models/`:
@@ -78,12 +96,28 @@ Core entities in `models/`:
 - `Payment` + `PaymentAllocation`: Payment tracking per schedule item
 - `Document`: File attachments linked to applications
 
+**Selldown entities**:
+- `SelldownBuyer`: Buyer/investor profiles (banks, NBFCs, AIFs)
+- `SelldownTransaction`: Sale records with gain/loss, pricing
+- `SelldownSettlement`: Settlement tracking
+- `SelldownCollectionSplit`: Post-sale collection distribution
+
+**Investment entities** (NCDs, CPs, Bonds):
+- `InvestmentIssuer`: Issuer profiles with ratings
+- `InvestmentProduct`: Product configuration (NCD, CP, Bond, G-Sec)
+- `Investment`: Individual holdings with YTM, accrued interest
+- `InvestmentCouponSchedule`: Coupon payment schedule
+- `InvestmentAccrual`: Daily interest accrual records
+- `InvestmentValuation`: MTM valuation history
+
 ### API Endpoints
 
 All routers in `api/routers/` follow RESTful conventions:
 - `/borrowers`, `/loan-products`, `/loan-applications`
 - `/loan-accounts`, `/loan-accounts/{id}/schedule`, `/loan-accounts/{id}/payments`
 - `/loan-partners`, `/loan-participations`, `/documents`
+- `/selldown-buyers`, `/selldown-transactions` - Selldown management
+- `/investments`, `/investment-issuers`, `/investment-products` - Investment management
 - `/health` - Health check
 
 ## Domain-Specific Notes
@@ -104,6 +138,21 @@ Default allocation order: fees → interest → principal (configurable per prod
 
 ### Delinquency (DPD)
 Computed from oldest unpaid installment's due date vs current date. Stored on `LoanAccount.dpd`.
+
+### Selldown
+Loan/investment transfers to third parties:
+- **Full Selldown**: 100% of position sold
+- **Partial Selldown**: Portion sold (e.g., 60%), seller retains rest
+- **Gain/Loss**: `Sale Price - Book Value`
+- **Post-sale servicing**: Optional servicing arrangement with fee
+
+### Investments (NCDs, CPs, Bonds)
+Fixed income instrument management:
+- **Instrument types**: NCD, CP, Bond, G-Sec, T-Bill, CD
+- **Coupon types**: Fixed, Floating, Zero Coupon, Step-Up/Down
+- **Day-count**: ACT/365, ACT/360, 30/360, ACT/ACT
+- **Valuation**: Amortized cost (HTM) or Mark-to-Market (AFS/HFT)
+- **YTM**: Yield to Maturity calculation using Newton-Raphson
 
 ## Configuration
 

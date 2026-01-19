@@ -20,6 +20,16 @@ from app.models.fee import FeeCharge, FeeType, ProductFee
 from app.models.fldg import FLDGArrangement, FLDGRecovery, FLDGUtilization
 from app.models.holiday_calendar import Holiday, HolidayCalendar
 from app.models.interest_accrual import InterestAccrual
+from app.models.investment import (
+    Investment,
+    InvestmentAccrual,
+    InvestmentCouponSchedule,
+    InvestmentIssuer,
+    InvestmentPortfolioSummary,
+    InvestmentProduct,
+    InvestmentTransaction,
+    InvestmentValuation,
+)
 from app.models.kyc import CreditBureauReport, KYCRequirement, KYCVerification
 from app.models.loan_account import LoanAccount
 from app.models.loan_application import LoanApplication
@@ -45,6 +55,13 @@ from app.models.securitization import (
     PoolLoan,
     SecuritizationPool,
 )
+from app.models.selldown import (
+    SelldownBuyer,
+    SelldownCollectionSplit,
+    SelldownPortfolioSummary,
+    SelldownSettlement,
+    SelldownTransaction,
+)
 from app.models.servicer_income import (
     ExcessSpreadTracking,
     ServicerArrangement,
@@ -63,69 +80,109 @@ from app.models.workflow import (
 from app.models.write_off import WriteOff, WriteOffRecovery
 
 __all__ = [
+    # Benchmark Rates
     "BenchmarkRate",
     "BenchmarkRateHistory",
+    # Borrower
     "Borrower",
+    # Collection
     "CollectionAction",
     "CollectionCase",
+    "EscalationRule",
+    "PromiseToPay",
+    # Counterparty & Supply Chain
     "Counterparty",
-    "CreditBureauReport",
     "CreditLimit",
-    "DecisionRule",
+    "Invoice",
+    # Credit Bureau
+    "CreditBureauReport",
+    # Delinquency
     "DelinquencySnapshot",
+    # Document
     "Document",
+    # ECL
     "ECLConfiguration",
     "ECLMovement",
     "ECLPortfolioSummary",
     "ECLProvision",
     "ECLStaging",
     "ECLUpload",
-    "EscalationRule",
-    "ExcessSpreadTracking",
+    # Fees
     "FeeCharge",
     "FeeType",
+    "ProductFee",
+    # FLDG
     "FLDGArrangement",
     "FLDGRecovery",
     "FLDGUtilization",
+    # Holiday Calendar
     "Holiday",
     "HolidayCalendar",
+    # Interest Accrual
     "InterestAccrual",
+    # Investments (NCDs, CPs, Bonds)
+    "Investment",
+    "InvestmentAccrual",
+    "InvestmentCouponSchedule",
+    "InvestmentIssuer",
+    "InvestmentPortfolioSummary",
+    "InvestmentProduct",
+    "InvestmentTransaction",
+    "InvestmentValuation",
+    # Securitization
     "Investor",
     "InvestorCashFlow",
-    "Invoice",
+    "PoolInvestment",
+    "PoolLoan",
+    "SecuritizationPool",
+    # KYC
     "KYCRequirement",
     "KYCVerification",
+    # Loan Core
     "LoanAccount",
     "LoanApplication",
     "LoanParticipation",
     "LoanPartner",
     "LoanProduct",
     "LoanRestructure",
+    # Partner Ledger
     "PartnerLedgerEntry",
     "PartnerSettlement",
     "PartnerSettlementDetail",
+    # Payments
     "Payment",
     "PaymentAllocation",
-    "PoolInvestment",
-    "PoolLoan",
+    # Prepayment
     "Prepayment",
-    "ProductFee",
-    "PromiseToPay",
+    # Repayment Schedule
     "RepaymentSchedule",
+    # Roles & Users
     "RolePermission",
+    "User",
+    # Rules Engine
+    "DecisionRule",
     "RuleExecutionLog",
     "RuleSet",
+    # Schedule Config
     "ScheduleConfiguration",
-    "SecuritizationPool",
+    # Selldown
+    "SelldownBuyer",
+    "SelldownCollectionSplit",
+    "SelldownPortfolioSummary",
+    "SelldownSettlement",
+    "SelldownTransaction",
+    # Servicer Income
+    "ExcessSpreadTracking",
     "ServicerArrangement",
     "ServicerIncomeAccrual",
     "ServicerIncomeDistribution",
-    "User",
     "WithholdingTracker",
+    # Workflow
     "WorkflowDefinition",
     "WorkflowInstance",
     "WorkflowTask",
     "WorkflowTransition",
+    # Write-off
     "WriteOff",
     "WriteOffRecovery",
 ]
