@@ -16,6 +16,8 @@ class LoanApplicationBase(BaseModel):
     approved_rate: float | None = None
     approved_tenure_months: int | None = None
     decision_reason: str | None = None
+    branch_id: str | None = None
+    branch_name: str | None = None
 
 
 class LoanApplicationCreate(LoanApplicationBase):
@@ -30,6 +32,8 @@ class LoanApplicationUpdate(BaseModel):
     approved_tenure_months: int | None = None
     decision_reason: str | None = None
     decision_at: datetime | None = None
+    branch_id: str | None = None
+    branch_name: str | None = None
 
 
 class LoanApplicationRead(LoanApplicationBase):

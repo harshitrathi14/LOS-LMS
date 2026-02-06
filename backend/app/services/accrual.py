@@ -226,7 +226,7 @@ def run_daily_accrual_batch(
 
     # Get all active loan accounts
     active_accounts = db.query(LoanAccount).filter(
-        LoanAccount.status == "active"
+        LoanAccount.status.in_(["active", "delinquent", "npa"])
     ).all()
 
     processed = 0

@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from app.api.routers import (
     benchmark_rates,
     borrowers,
+    collaterals,
+    collections,
     documents,
     health,
     holiday_calendars,
@@ -30,6 +32,8 @@ app.include_router(documents.router)
 app.include_router(holiday_calendars.router)
 app.include_router(benchmark_rates.router)
 app.include_router(loan_lifecycle.router)
+app.include_router(collaterals.router)
+app.include_router(collections.router)
 
 
 @app.get("/")

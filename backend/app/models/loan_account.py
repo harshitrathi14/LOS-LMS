@@ -106,3 +106,4 @@ class LoanAccount(Base):
     holiday_calendar = relationship("HolidayCalendar")
     benchmark_rate = relationship("BenchmarkRate")
     write_off = relationship("WriteOff", back_populates="loan_account", uselist=False)
+    selldown_transactions = relationship("SelldownTransaction", back_populates="loan_account")

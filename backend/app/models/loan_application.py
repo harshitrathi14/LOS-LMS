@@ -23,5 +23,9 @@ class LoanApplication(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
     decision_at: Mapped[DateTime | None] = mapped_column(DateTime)
 
+    # Branch info for LAP workflow
+    branch_id: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    branch_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     borrower = relationship("Borrower")
     product = relationship("LoanProduct")

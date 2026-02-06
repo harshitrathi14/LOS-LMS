@@ -9,6 +9,7 @@ from app.models.loan_account import LoanAccount
 from app.models.payment import Payment
 from app.models.payment_allocation import PaymentAllocation
 from app.models.repayment_schedule import RepaymentSchedule
+from app.services.delinquency import apply_delinquency_state
 
 
 def _to_decimal(value: float | Decimal) -> Decimal:
@@ -185,4 +186,6 @@ def apply_payment_and_update_dpd(
     payment: Payment,
 ) -> None:
     apply_payment(db, loan_account, payment)
-    loan_account.dpd = compute_dpd(db, loan_account.id)
+    as_of_date = payment.paid_at.date() if payment.paid_at else date.today()
+    updated_dpd = compute_dpd(db, loan_account.id, as_of_date=as_of_date)
+    apply_delinquency_state(loan_account, updated_dpd, as_of_date)

@@ -1,5 +1,11 @@
 from app.models.benchmark_rate import BenchmarkRate, BenchmarkRateHistory
 from app.models.borrower import Borrower
+from app.models.collateral import (
+    Collateral,
+    CollateralInsurance,
+    CollateralLegalVerification,
+    CollateralValuation,
+)
 from app.models.collection import (
     CollectionAction,
     CollectionCase,
@@ -85,6 +91,11 @@ __all__ = [
     "BenchmarkRateHistory",
     # Borrower
     "Borrower",
+    # Collateral
+    "Collateral",
+    "CollateralInsurance",
+    "CollateralLegalVerification",
+    "CollateralValuation",
     # Collection
     "CollectionAction",
     "CollectionCase",

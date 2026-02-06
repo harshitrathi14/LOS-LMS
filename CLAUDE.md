@@ -11,8 +11,8 @@ docker compose up -d
 # Setup (from project root)
 cd backend
 python -m venv .venv
-.venv/Scripts/Activate.ps1  # Windows PowerShell
-# source .venv/bin/activate  # Linux/macOS
+source .venv/bin/activate        # Linux/macOS
+# .venv/Scripts/Activate.ps1     # Windows PowerShell
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 cp .env.example .env
@@ -23,144 +23,119 @@ python -m app.db.init_db
 # Run development server
 uvicorn app.main:app --reload
 
-# Run tests (from project root)
+# Run tests (from project root, NOT from backend/)
 pytest
-
-# Run a single test
 pytest tests/test_schedule.py
 pytest tests/test_schedule.py::test_generate_emi_schedule
 ```
 
-## Project Overview
-
-Unified Loan Origination and Loan Management System (LOS/LMS) - an integrated financial lending and investment platform handling:
-- **Loans**: From application to repayment (retail, commercial, co-lending)
-- **Investments**: Fixed income instruments (NCDs, CPs, Bonds, G-Secs)
-- **Selldown**: Loan/investment transfers and sales (full/partial, mid-tenure)
+**Important**: `pytest.ini` sets `pythonpath = backend`, so tests must be run from the project root, not from `backend/`.
 
 ## Architecture
 
+Single FastAPI backend with SQLAlchemy ORM. No frontend.
+
 ```
-backend/
-├── app/
-│   ├── main.py              # FastAPI app entry point
-│   ├── core/config.py       # Settings via pydantic-settings (.env)
-│   ├── db/
-│   │   ├── base.py          # SQLAlchemy Base
-│   │   ├── session.py       # Database session factory
-│   │   └── init_db.py       # Schema initialization
-│   ├── models/              # SQLAlchemy ORM models
-│   ├── schemas/             # Pydantic request/response schemas
-│   ├── api/
-│   │   ├── deps.py          # Dependency injection (get_db)
-│   │   └── routers/         # API endpoint modules
-│   └── services/            # Business logic
-│       ├── schedule.py      # Amortization schedule generation
-│       └── payments.py      # Payment processing, DPD calculation
-tests/                       # pytest tests
+backend/app/
+├── main.py              # FastAPI app, router registration
+├── core/config.py       # pydantic-settings from .env (DATABASE_URL, APP_NAME, ENV, LOG_LEVEL)
+├── db/
+│   ├── base.py          # SQLAlchemy DeclarativeBase
+│   ├── session.py       # Engine + SessionLocal factory (pool_pre_ping=True)
+│   ├── init_db.py       # Base.metadata.create_all (schema creation)
+│   └── seed_data.py     # Database seeding
+├── models/              # ~33 SQLAlchemy ORM model files (SQLAlchemy 2.0 Mapped types)
+├── schemas/             # Pydantic v2 request/response schemas
+├── api/
+│   ├── deps.py          # get_db() yields SessionLocal with try/finally close
+│   └── routers/         # 12 router modules
+└── services/            # ~28 business logic modules (pure functions, Session passed explicitly)
 ```
 
-### Key Services
+### Service Layer Organization
 
-**`services/schedule.py`** - Amortization schedule generation
-- `generate_amortization_schedule()`: Creates repayment schedules
-- Supports: EMI, interest_only, bullet schedule types
-- Uses `Decimal` for financial precision (ROUND_HALF_UP)
+Services are organized in layers. Lower-level services are used by higher-level ones:
 
-**`services/payments.py`** - Payment processing
-- `apply_payment()`: Allocates payments using waterfall (fees → interest → principal)
-- `compute_dpd()`: Calculates Days Past Due from oldest unpaid installment
-- `_refresh_account_balances()`: Updates loan account outstanding amounts
+**Foundation** (pure calculation, no DB):
+- `interest.py` — Day-count conventions (30/360, ACT/365, ACT/360, ACT/ACT), year fractions
+- `frequency.py` — Payment frequency calculations (weekly → annual)
+- `calendar.py` — Business day adjustments (following, modified_following, preceding)
+- `floating_rate.py` — Benchmark rate lookups, effective rate with floor/cap
 
-**`services/selldown.py`** - Loan/Investment selldown
-- `initiate_loan_selldown()`: Create loan selldown transaction
-- `initiate_investment_selldown()`: Create investment selldown transaction
-- `approve_selldown()` / `settle_selldown()`: Workflow processing
-- `split_collection_for_selldown()`: Post-sale collection splitting
+**Schedule Generation**:
+- `schedule.py` — Core amortization: EMI, interest_only, bullet. Returns `list[ScheduleItem]` (TypedDict)
+- `advanced_schedule.py` — Step-up, balloon, amortizing bullet schedules
+- `fees.py` — Fee types, charge calculations, waiver logic
 
-**`services/investment.py`** - Fixed income investment management
-- `create_investment()`: Create NCD, CP, Bond, G-Sec investments
-- `generate_coupon_schedule()`: Generate coupon payment schedule
-- `accrue_interest()`: Daily interest accrual with premium/discount amortization
-- `receive_coupon()`: Record coupon receipt
-- `mature_investment()`: Process maturity/redemption
-- `mark_to_market()`: MTM valuation
-- `calculate_ytm()`: Yield to maturity calculation
+**Loan Lifecycle**:
+- `payments.py` — Payment waterfall allocation (fees → interest → principal), DPD computation
+- `accrual.py` — Daily interest accrual, cumulative tracking
+- `delinquency.py` — DPD buckets, NPA classification, delinquency snapshots
+- `restructure.py` — Rate changes, tenure extension, EMI recalculation
+- `prepayment.py` — EMI reduction vs tenure reduction, penalty calculation
+- `closure.py` — Settlement amounts, post-closure accounting
+- `lifecycle.py` — Orchestrates restructure/prepayment/closure/write-off with impact analysis (dataclasses)
+
+**Co-Lending & Partners**:
+- `co_lending.py` — Partner share calculations, income distribution
+- `settlement.py` — Receivable/payable tracking between partners
+- `fldg.py` — First Loss Default Guarantee tracking
+
+**Institutional**:
+- `selldown.py` — Loan/investment transfers (full/partial), settlement, collection splitting
+- `investment.py` — Fixed income (NCD, CP, Bond, G-Sec): coupon schedules, YTM (Newton-Raphson), MTM, accrual
+- `securitization.py` — Pool management, tranche waterfalls, investor cash flows
+- `servicer_income.py` — Servicer fees, excess spread, withholding
+
+**Risk & Compliance**:
+- `ecl.py` — IFRS 9 Expected Credit Loss: staging, scenario analysis, provisions
+- `par_report.py` — Portfolio at Risk reporting
+- `eod.py` — End-of-day batch orchestration
+
+**Platform**:
+- `workflow.py`, `rules_engine.py`, `kyc.py`, `supply_chain.py`
 
 ### Data Model
 
-Core entities in `models/`:
-- `Borrower` → `LoanApplication` → `LoanAccount` → `RepaymentSchedule`
-- `LoanProduct`: Configurable loan terms
-- `LoanPartner` + `LoanParticipation`: Co-lending support with share percentages
-- `Payment` + `PaymentAllocation`: Payment tracking per schedule item
-- `Document`: File attachments linked to applications
+Core loan lifecycle chain: `Borrower` → `LoanApplication` → `LoanAccount` → `RepaymentSchedule` → `Payment` + `PaymentAllocation`
 
-**Selldown entities**:
-- `SelldownBuyer`: Buyer/investor profiles (banks, NBFCs, AIFs)
-- `SelldownTransaction`: Sale records with gain/loss, pricing
-- `SelldownSettlement`: Settlement tracking
-- `SelldownCollectionSplit`: Post-sale collection distribution
+Other key entity groups:
+- **Products**: `LoanProduct`, `InvestmentProduct`, `Fee`/`FeeType`/`ProductFee`
+- **Co-lending**: `LoanPartner` + `LoanParticipation` (share_percent, differential rates) + `PartnerLedger`
+- **Selldown**: `SelldownBuyer` → `SelldownTransaction` → `SelldownSettlement` + `SelldownCollectionSplit`
+- **Investments**: `InvestmentIssuer` → `Investment` → `InvestmentCouponSchedule` + `InvestmentAccrual` + `InvestmentValuation`
+- **Securitization**: `SecuritizationPool` + `PoolLoan`/`PoolInvestment` → `Investor` + `InvestorCashFlow`
+- **Risk**: `DelinquencySnapshot`, `ECLConfiguration`/`ECLProvision`/`ECLStaging`, `InterestAccrual`
 
-**Investment entities** (NCDs, CPs, Bonds):
-- `InvestmentIssuer`: Issuer profiles with ratings
-- `InvestmentProduct`: Product configuration (NCD, CP, Bond, G-Sec)
-- `Investment`: Individual holdings with YTM, accrued interest
-- `InvestmentCouponSchedule`: Coupon payment schedule
-- `InvestmentAccrual`: Daily interest accrual records
-- `InvestmentValuation`: MTM valuation history
+## Key Patterns
 
-### API Endpoints
+### Financial Precision
+All monetary calculations use `Decimal` with `ROUND_HALF_UP`. Constants: `CENT = Decimal("0.01")`, `RATE_PRECISION = Decimal("0.0000000001")`. Convert via `_to_decimal(value)` helper (present in multiple services). Model fields use `Numeric(18, 2)` but are mapped as `float` — Decimal conversion happens in services.
 
-All routers in `api/routers/` follow RESTful conventions:
-- `/borrowers`, `/loan-products`, `/loan-applications`
-- `/loan-accounts`, `/loan-accounts/{id}/schedule`, `/loan-accounts/{id}/payments`
-- `/loan-partners`, `/loan-participations`, `/documents`
-- `/selldown-buyers`, `/selldown-transactions` - Selldown management
-- `/investments`, `/investment-issuers`, `/investment-products` - Investment management
-- `/health` - Health check
+### Service Functions Are Stateless
+Services receive `db: Session` explicitly. No global state, no ORM side effects outside the function. This is deliberate for testability and composability.
 
-## Domain-Specific Notes
+### Router Pattern
+Routers do simple CRUD directly (no service layer for basic operations). Complex operations call services. All use `Depends(get_db)` for session injection.
 
-### Financial Calculations
-- All monetary calculations use `Decimal` with explicit rounding
-- Day-count: Currently monthly periods; designed for extension to 30/360, ACT/365
-- EMI formula: `P * r * (1+r)^n / ((1+r)^n - 1)`
+### Tests
+Tests call service functions directly with constructed inputs (no DB fixtures needed for calculation tests). API tests use `fastapi.testclient.TestClient`. Test files are at project root `tests/`, not `backend/tests/`.
 
-### Payment Waterfall
-Default allocation order: fees → interest → principal (configurable per product in future)
+## Domain Rules
 
-### Co-Lending
-`LoanParticipation` links `LoanAccount` to `LoanPartner` with:
-- `share_percent`: Principal/interest split ratio
-- `interest_rate`: Optional differential rate per partner
-- `fee_share_percent`: Fee allocation override
-
-### Delinquency (DPD)
-Computed from oldest unpaid installment's due date vs current date. Stored on `LoanAccount.dpd`.
-
-### Selldown
-Loan/investment transfers to third parties:
-- **Full Selldown**: 100% of position sold
-- **Partial Selldown**: Portion sold (e.g., 60%), seller retains rest
-- **Gain/Loss**: `Sale Price - Book Value`
-- **Post-sale servicing**: Optional servicing arrangement with fee
-
-### Investments (NCDs, CPs, Bonds)
-Fixed income instrument management:
-- **Instrument types**: NCD, CP, Bond, G-Sec, T-Bill, CD
-- **Coupon types**: Fixed, Floating, Zero Coupon, Step-Up/Down
-- **Day-count**: ACT/365, ACT/360, 30/360, ACT/ACT
-- **Valuation**: Amortized cost (HTM) or Mark-to-Market (AFS/HFT)
-- **YTM**: Yield to Maturity calculation using Newton-Raphson
+- **Payment waterfall**: fees → interest → principal (strict order, per installment due date)
+- **DPD**: Days past due = `(as_of_date - oldest_unpaid_due_date).days`
+- **NPA classification**: Based on DPD buckets (SMA-0: 1-30, SMA-1: 31-60, SMA-2: 61-90, NPA: 90+)
+- **EMI formula**: `P * r * (1+r)^n / ((1+r)^n - 1)` where r = monthly rate
+- **Co-lending splits**: `LoanParticipation.share_percent` determines principal/interest allocation per partner
+- **Selldown gain/loss**: `sale_price - book_value`
+- **YTM**: Solved iteratively using Newton-Raphson method
+- **Day-count conventions**: 30/360 (bond), ACT/365 (fixed), ACT/360 (money market), ACT/ACT (ISDA)
 
 ## Configuration
 
-Environment variables (`.env`):
-- `DATABASE_URL`: Default `sqlite:///./los_lms.db`, or PostgreSQL connection string
+Environment variables via `.env` (loaded by pydantic-settings):
+- `DATABASE_URL`: Default `sqlite:///./los_lms.db`. For PostgreSQL: `postgresql://los:los@localhost:5432/los_lms`
 - `APP_NAME`, `ENV`, `LOG_LEVEL`
 
-## Reference Documents
-
-- `docs/requirements-summary.md` - Condensed requirements
-- `*.pdf` files - Full system specifications
+Alembic is configured (`alembic.ini`, `migrations/`) but schema is primarily managed via `init_db.py` create_all.
